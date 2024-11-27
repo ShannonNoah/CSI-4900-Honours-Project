@@ -21,6 +21,7 @@ import {
   Animated,
   Alert,
   ActivityIndicator,
+  InteractionManager
 } from "react-native";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "../components/firebase";
@@ -193,28 +194,42 @@ const HomePage = () => {
   const [suggestedPrompts, setSuggestedPrompts] = useState([]);
   const [loadingPrompts, setLoadingPrompts] = useState(true); // State for loading prompts
 
-  // Fetch prompts when the component mounts
-  useEffect(() => {
-    const fetchPrompts = async () => {
-      try {
-        setLoadingPrompts(true);
-        // Fetch the user's journal entries from Firestore
-        const journalEntries = await getJournalEntries();
+  // used to fetch prompts when the component mounts
+  const fetchPrompts = async () => {
+    try {
+      setLoadingPrompts(true);
+      // Fetch the user's journal entries from Firestore
+      const journalEntries = await getJournalEntries();
 
-        // Use those entries to generate suggested prompts
-        const prompts = await getSuggestedPrompts(journalEntries);
+      // Use those entries to generate suggested prompts
+      const prompts = await getSuggestedPrompts(journalEntries);
 
-        // Set the generated prompts to the state
-        setSuggestedPrompts(prompts);
-      } catch (error) {
-        console.error("Error fetching suggested prompts:", error);
-      } finally {
-        setLoadingPrompts(false);
-      }
-    };
+      // Set the generated prompts to the state
+      setSuggestedPrompts(prompts);
+    } catch (error) {
+      console.error("Error fetching suggested prompts:", error);
+    } finally {
+      setLoadingPrompts(false);
+    }
+  };
 
-    fetchPrompts();
-  }, []);
+
+  const fetchEntries = useCallback(async () => {
+    try {
+      setLoading(true);
+      const entries = await getJournalEntries();
+
+      // Extract journal dates directly as strings
+      const dates = entries.map((entry) => entry.journalDate); // Use journalDate directly
+
+      setJournalEntries(entries);
+      setEntryDates(dates); // Store dates as strings
+    } catch (error) {
+      console.error("Error fetching journal entries:", error.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [setEntryDates, setJournalEntries]);
 
   // Helper function to reset newEntryDate to today's date
   const resetToTodayDate = () => {
@@ -234,25 +249,9 @@ const HomePage = () => {
     setViewJournalEntry(null); // Clear the selected entry
   };
 
-  const fetchEntries = useCallback(async () => {
-    try {
-      setLoading(true);
-      const entries = await getJournalEntries();
-
-      // Extract journal dates directly as strings
-      const dates = entries.map((entry) => entry.journalDate); // Use journalDate directly
-
-      setJournalEntries(entries);
-      setEntryDates(dates); // Store dates as strings
-    } catch (error) {
-      console.error("Error fetching journal entries:", error.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [setEntryDates, setJournalEntries]);
-
   // Trigger background animation
   useEffect(() => {
+    fetchPrompts()
     fetchEntries();
 
     Animated.sequence([
@@ -270,6 +269,7 @@ const HomePage = () => {
   }, [fetchEntries]);
 
   useEffect(() => {
+
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser) {
         setUser(currentUser); // Set the authenticated user
@@ -280,25 +280,29 @@ const HomePage = () => {
       }
     });
 
-    // Check if a journal entry is passed from navigation
-    if (route.params?.viewJournalEntry) {
-      handleOpenJournal(route.params.viewJournalEntry)
-      navigation.setParams({ viewJournalEntry: null }); // Clear params
-    } else if (route.params?.selectedDate) {
-      console.log("Creating entry for date:", route.params.selectedDate);
-      setNewEntryDate(route.params.selectedDate); // Set the selected date for the new entry
-      setCreateEntryModalVisible(true); // Open the modal for creating an entry
-      console.log("Modal visibility set to true");
-      navigation.setParams({ selectedDate: null }); // Clear params
-    } else {
-      // Fetch existing journal entries for the authenticated user
-      fetchEntries();
-    }
+    const interactionPromise = InteractionManager.runAfterInteractions(() => {
 
-    // Cleanup the authentication listener on component unmount
+      // Check if a journal entry is passed from navigation
+      if (route.params?.viewJournalEntry) {
+        handleOpenJournal(route.params.viewJournalEntry)
+        navigation.setParams({ viewJournalEntry: null }); // Clear params
+      }
+
+      if (route.params?.selectedDate) {
+        console.log("Creating entry for date:", route.params.selectedDate);
+        setNewEntryDate(route.params.selectedDate); // Set the selected date for the new entry
+        setCreateEntryModalVisible(true); // Open the modal for creating an entry
+        console.log("Modal visibility set to true");
+        navigation.setParams({ selectedDate: null }); // Clear params
+      }
+    },
+    );
+
     return () => {
-      unsubscribeAuth();
+      interactionPromise.cancel()
+      unsubscribeAuth()
     };
+
   }, [fetchEntries, route.params]);
 
   const handleSaveEntry = async () => {
@@ -556,6 +560,7 @@ const CreateJournalEntry = ({
         .map((item) => item.response)
         .join(". ");
 
+      closeModal()
       navigation.navigate("Analysis", {
         entryId: addedEntry.id,
         entryTitle: addedEntry.entryTitle,
@@ -586,6 +591,7 @@ const CreateJournalEntry = ({
           "free"
         );
 
+        closeModal()
         navigation.navigate("Analysis", {
           entryId: addedEntry.id,
           entryTitle: addedEntry.entryTitle,
