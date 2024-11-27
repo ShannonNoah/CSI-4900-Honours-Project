@@ -18,7 +18,7 @@ function EmotionCard({ rank, emotion, icon }) {
         source={icon}
         style={styles.emotionIcon}
       />
-      <Text style={styles.emotionName}>{emotion.replace("_"," ")}</Text>
+      <Text style={styles.emotionName}>{emotion.replace("_", " ")}</Text>
     </View>
   );
 }
@@ -154,45 +154,45 @@ export default function Analysis() {
     }
   };
 
-useEffect(() => {
-  const fetchEmotions = async () => {
-    setLoadingEmotions(true);
+  useEffect(() => {
+    const fetchEmotions = async () => {
+      setLoadingEmotions(true);
 
-    try {
-      let textForAnalysis = "";
+      try {
+        let textForAnalysis = "";
 
-      if (entry.topEmotions && entry.topEmotions.length > 0) {
-        // Use stored emotions if available
-        setTopEmotions(entry.topEmotions);
-        return;
+        if (entry.topEmotions && entry.topEmotions.length > 0) {
+          // Use stored emotions if available
+          setTopEmotions(entry.topEmotions);
+          return;
+        }
+        if (type === "prompts" && Array.isArray(entryText)) {
+          // Combine all prompt responses into a single string
+          textForAnalysis = entryText
+            .map((item) => item.response)
+            .join(". "); // Join all responses with a period and space
+        } else if (entryText) {
+          // Use free-writing text as-is
+          textForAnalysis = entryText;
+        }
+
+        console.log("Text for emotion analysis:", textForAnalysis);
+
+        const detectedEmotions = await getEmotion(textForAnalysis);
+
+        if (!detectedEmotions || !Array.isArray(detectedEmotions)) {
+          throw new Error("Invalid response from emotion analysis API.");
+        }
+        await parseTopEmotions(detectedEmotions);
+      } catch (error) {
+        console.error("Error fetching emotions:", error.message || error);
+      } finally {
+        setLoadingEmotions(false);
       }
-      if (type === "prompts" && Array.isArray(entryText)) {
-        // Combine all prompt responses into a single string
-        textForAnalysis = entryText
-          .map((item) => item.response)
-          .join(". "); // Join all responses with a period and space
-      } else if (entryText) {
-        // Use free-writing text as-is
-        textForAnalysis = entryText;
-      }
+    };
 
-      console.log("Text for emotion analysis:", textForAnalysis);
-
-      const detectedEmotions = await getEmotion(textForAnalysis);
-
-      if (!detectedEmotions || !Array.isArray(detectedEmotions)) {
-        throw new Error("Invalid response from emotion analysis API.");
-      }
-      await parseTopEmotions(detectedEmotions);
-    } catch (error) {
-      console.error("Error fetching emotions:", error.message || error);
-    } finally {
-      setLoadingEmotions(false);
-    }
-  };
-
-  fetchEmotions();
-}, [entry, entryId, entryText]);
+    fetchEmotions();
+  }, [entry, entryId, entryText]);
 
 
 
